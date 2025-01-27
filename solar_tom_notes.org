@@ -1,0 +1,60 @@
+* Build process
+1) Edit headers.h. Change TOMROOT to data and code output location.
+2) Edit buildA_params.h.
+   - Make sure DATADIR is defined correctly (it should be set to a path containing .fts files).
+   - Make sure CONFSTRING is a valid conf file (line 1: how many files, subsequent lines: name of a FTS file, final line: newline).
+3) Make sure TOMROOT/bindata exists.
+4) Go to the libwcs subdirectory and make. This will create the static library libwcs.a.
+5) Go to the parent directory and make.
+* Run process
+** builda (calculate A matrix and y vector)
+Run ./builda. It will produce 11 files in TOMROOT using A_OUTFILE as a file suffix. The following files are important.
+*** y
+- y{A_OUTFILE} :: Data values stored as a vector. (float32)
+- y_idx{A_OUTFILE} :: Index for each data value. (int32)
+- See "Plot y.ipynb" to better understand what is stored in these files.
+*** H
+The matrix calculated by builda is first output in sparse CSR (row-wise) format and then converted to sparse CSC (column-wise) format. See https://docs.scipy.org/doc/scipy/reference/sparse.html for information on these standard ways to store sparse matrices
+**** CSR files
+- w{A_OUTFILE} :: Matrix values. (float32)
+- j{A_OUTFILE} :: Column index for each value. (int32)
+- r{A_OUTFILE} :: Index pointer array for each row. (int32)
+**** CSC files
+- v{A_OUTFILE} :: Matrix values. (float32)
+- i{A_OUTFILE} :: Row index for each value. (int32)
+- n{A_OUTFILE} :: Index pointer array for each column. (int32)
+** Compute regularization matrix
+- Open matlab.
+- Navigate solar_tom/matlab.
+- Set NRAD, NTHETA, and NPHI to match buildA_params.
+  >> NRAD = 20; NTHETA = 30; NPHI = 60;
+- Set DIR to TOMROOT/bindata.
+  >> DIR = '/Users/butala/Documents/research/zheyuan/tomroot/bindata/';
+- Calculate the regularization matrix.
+  >> derivs_hollowsph(NRAD, NTHETA, NPHI, DIR);
+  done with d2r
+  done with d2theta
+  done with d2phi
+  h_laplac has 69600 rows and 36000 columns
+  The filename extension is hlaplac_20_30_60
+  done
+  RUN row_to_col.c!!!!!
+- This generates 8 files. The output it stored in sparse CSR (row-wise) format.
+- Convert to sparse CSC (column-wise) format with "./row_to_col /Users/butala/Documents/research/zheyuan/tomroot/bindata/ hlaplac_20_30_60 69600 3600
+0" in this case. Note the output of the Matlab function are the arguments to row_to_col.
+** Compute initial x_hat
+We use x_hat = 0 for the initial guess. See the "Generate x_hat 0.ipynb" notebook. Make sure the parameters match buildaA_params.h.
+** callsolve_cg (calculate x_hat by conjugate gradient method)
+- Check that FILESTR0 in solve_cv_params.h agrees with A_OUTFILE in buildA_params.h. Set MAIN_X_INFILE to output of the previous step.
+- Run callsolve_cg.
+** callsolve_fess (calculate x_hat by Fessler method --- it uses the constraint x_hat >= 0)
+- Set MAIN_X_INFILE to the output of the last step and MAIN_X_OUTFILE to a new file.
+- Run callsolve_fess.
+** auto_cv_brent (brutal search for "best" regularization parameters)
+I have not run this code in a long, long time. For now, I would recode this before trying to figure out how it works again :).
+* Generating plots
+See "Plot r slice.ipynb"
+* How to improve this code
+** Link to dynamic libwcs
+** Use configuration files instead of DEFINEs
+Recompiling for a parameter change is crazy.
